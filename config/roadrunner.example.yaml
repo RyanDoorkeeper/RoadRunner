@@ -1,0 +1,13 @@
+vehicle_name: Pathfinder
+
+mqtt:
+  host: homeassistant.local
+  port: 1883
+  username: null
+  password: null
+  base_topic: car/pathfinder
+
+hudiy:
+  command:
+    - hudiy
+  autostart: false
