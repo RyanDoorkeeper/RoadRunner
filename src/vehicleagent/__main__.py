@@ -4,13 +4,17 @@ import argparse
 import logging
 import time
 
+from .elm327 import ELM327SerialAdapter
 from .mqtt import MQTTPublisher
 from .simulator import SimulatorAdapter
 
 
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="RoadRunner vehicle telemetry service")
-    parser.add_argument("--simulator", action="store_true", help="Use fake vehicle data")
+    source = parser.add_mutually_exclusive_group(required=True)
+    source.add_argument("--simulator", action="store_true", help="Use fake vehicle data")
+    source.add_argument("--elm327-port", help="Serial/RFCOMM port for an ELM327 adapter")
+    parser.add_argument("--elm327-baud", type=int, default=38400)
     parser.add_argument("--mqtt-host", default="localhost")
     parser.add_argument("--mqtt-port", type=int, default=1883)
     parser.add_argument("--base-topic", default="car/pathfinder")
@@ -26,10 +30,11 @@ def main() -> int:
         format="%(asctime)s %(levelname)s %(name)s: %(message)s",
     )
 
-    if not args.simulator:
-        raise SystemExit("Only --simulator mode is implemented so far")
+    if args.simulator:
+        adapter = SimulatorAdapter()
+    else:
+        adapter = ELM327SerialAdapter(port=args.elm327_port, baudrate=args.elm327_baud)
 
-    adapter = SimulatorAdapter()
     mqtt = MQTTPublisher(host=args.mqtt_host, port=args.mqtt_port, base_topic=args.base_topic)
 
     adapter.connect()
