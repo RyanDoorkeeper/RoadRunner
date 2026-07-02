@@ -3,10 +3,12 @@ from __future__ import annotations
 import argparse
 import logging
 import time
+from pathlib import Path
 
 from .elm327 import ELM327SerialAdapter
 from .mqtt import MQTTPublisher
 from .simulator import SimulatorAdapter
+from .store import TelemetryStore
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -18,6 +20,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--mqtt-host", default="localhost")
     parser.add_argument("--mqtt-port", type=int, default=1883)
     parser.add_argument("--base-topic", default="car/pathfinder")
+    parser.add_argument("--db", type=Path, default=Path("data/roadrunner.sqlite3"))
     parser.add_argument("--interval", type=float, default=1.0)
     parser.add_argument("--verbose", action="store_true")
     return parser
@@ -36,19 +39,23 @@ def main() -> int:
         adapter = ELM327SerialAdapter(port=args.elm327_port, baudrate=args.elm327_baud)
 
     mqtt = MQTTPublisher(host=args.mqtt_host, port=args.mqtt_port, base_topic=args.base_topic)
+    store = TelemetryStore(args.db)
 
     adapter.connect()
     mqtt.connect()
+    store.connect()
 
     try:
         while True:
             state = adapter.read_state()
+            store.insert_sample(state)
             mqtt.publish_state(state)
             logging.info("Published state: %s", state.to_dict())
             time.sleep(args.interval)
     except KeyboardInterrupt:
         pass
     finally:
+        store.close()
         mqtt.disconnect()
         adapter.disconnect()
 
