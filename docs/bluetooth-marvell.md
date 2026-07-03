@@ -63,7 +63,7 @@ phy1: Wireless LAN
 
 Note: on Debian, `rfkill` may be located at `/usr/sbin/rfkill`, which may not be in a normal user's PATH. `sudo rfkill list` works.
 
-## Observed behavior
+## Observed built-in Bluetooth behavior
 
 - Bluetooth service runs.
 - Controller is visible.
@@ -109,13 +109,50 @@ This suggests the issue may be a suspend/resume power-management problem with th
 
 The Marvell combo card handles both Wi-Fi and Bluetooth. After suspend/resume, the firmware can enter a bad state. Wi-Fi may recover after a firmware reset, but Bluetooth discovery/pairing remains unreliable.
 
-## Next tests
+## USB Bluetooth adapter workaround
 
-1. Reboot cleanly.
-2. Do not suspend.
-3. Test Bluetooth pairing immediately after boot.
-4. Test a spare USB Bluetooth adapter.
-5. If USB Bluetooth works, prefer it for Android Auto/HuDiY.
+A Baseus USB Bluetooth adapter was tested successfully.
+
+With both adapters present, BlueZ showed:
+
+```text
+Controller 04:7F:0E:33:A3:07 bronc #2 [default]
+Controller 98:5F:D3:C6:51:E9 bronc
+```
+
+The USB adapter became the default controller automatically.
+
+After later testing, the system showed only the USB adapter:
+
+```text
+Controller 04:7F:0E:33:A3:07 bronc [default]
+```
+
+This state is preferred for HuDiY testing because it prevents HuDiY from accidentally selecting the built-in Marvell Bluetooth controller.
+
+Confirmed with USB Bluetooth:
+
+- Phone pairs with the Surface.
+- HuDiY companion app connects.
+- Bluetooth media metadata works.
+- Bluetooth media controls work.
+- Android Auto companion-related features work enough to support the HuDiY workflow.
+
+## Important driver note
+
+The command below unloads the `btusb` kernel module:
+
+```bash
+sudo modprobe -r btusb
+```
+
+This removes support for USB Bluetooth adapters. If the USB adapter disappears from `bluetoothctl list`, reload it with:
+
+```bash
+sudo modprobe btusb
+```
+
+Then unplug/replug the USB Bluetooth adapter if needed.
 
 ## Possible final design
 
@@ -127,3 +164,5 @@ USB Bluetooth adapter    -> Bluetooth for Android Auto / HuDiY
 ```
 
 This avoids depending on the Marvell Bluetooth stack for the head-unit function.
+
+If HuDiY remains confused by multiple controllers, RoadRunner should eventually include startup logic or documentation to prefer/require the USB Bluetooth adapter for HuDiY.
