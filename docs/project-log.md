@@ -157,3 +157,107 @@ Next test:
 1. Reboot and test Bluetooth before any suspend.
 2. Test spare USB Bluetooth adapter.
 3. If USB Bluetooth is reliable, use Marvell for Wi-Fi and USB adapter for Bluetooth.
+
+## 2026-07-03: HuDiY / Android Auto validation
+
+### USB Bluetooth adapter test
+
+A Baseus USB Bluetooth adapter was tested.
+
+Without the USB adapter, BlueZ showed only the internal Marvell controller:
+
+```text
+Controller 98:5F:D3:C6:51:E9 bronc [default]
+```
+
+With the USB adapter plugged in, BlueZ showed:
+
+```text
+Controller 04:7F:0E:33:A3:07 bronc #2 [default]
+Controller 98:5F:D3:C6:51:E9 bronc
+```
+
+The USB adapter automatically became the default controller.
+
+After unloading/reloading Bluetooth USB support during testing, only the USB adapter remained visible:
+
+```text
+Controller 04:7F:0E:33:A3:07 bronc [default]
+```
+
+This became the preferred test state because HuDiY no longer had multiple Bluetooth controllers to choose from.
+
+### Bluetooth pairing and companion app
+
+Pairing from the Android phone to the Surface worked with the Baseus USB adapter.
+
+The HuDiY companion app connected to the Surface. Bluetooth media metadata and controls worked, including:
+
+- Track title
+- Artist/podcast information
+- Album art
+- Play/pause and skip controls
+
+This confirmed that the USB Bluetooth path was healthy enough for HuDiY companion features.
+
+### Android Auto connection
+
+HuDiY showed an Android Auto page with:
+
+- Connect USB
+- Connect WiFi
+- Resume
+- Quit
+
+Initial USB testing through a USB hub did not work. A later direct USB cable connection from the phone to the Surface worked.
+
+After direct USB connection, Android Auto projection worked. Confirmed working:
+
+- Android Auto display/projection
+- Navigation card and turn instruction display
+- Media metadata
+- Album art
+- Time synchronization
+
+This indicates that the earlier failure was likely related to the USB hub and/or cable, not HuDiY or Linux as a whole.
+
+### Display / scaling observations
+
+The Surface is running KDE Plasma on Wayland.
+
+Observed display state:
+
+```text
+Resolution: 2736x1824 (3:2)
+Scale: 180%
+Session: Wayland
+```
+
+`xrandr` showed the native display mode:
+
+```text
+eDP-1 connected primary 2736x1824
+2736x1824 59.98+
+```
+
+HuDiY officially targets 1920x1080. During Android Auto startup, a small Android Auto projection window appeared layered with the HuDiY interface. This may be related to the Surface's high-DPI display, Wayland/XWayland behavior, and fractional scaling.
+
+The projection did not necessarily crash. It may have been closed or interrupted by tapping a HuDiY control that was visually near an Android Auto control.
+
+### Current working theory
+
+The core Android Auto path now works when connected directly over USB. Remaining issues are likely polish items:
+
+- Display scaling/window embedding under Wayland
+- Whether wireless Android Auto works
+- Whether USB hubs can be used reliably
+- Whether a different display mode, such as 1920x1440 or 1920x1080 with 100% scaling, improves projection behavior
+
+### Updated next tests
+
+1. Test direct USB with a known-good data cable several times.
+2. Test whether the same cable works through the USB hub.
+3. Test 1920x1440 or 1920x1080 at 100% scaling.
+4. Test KDE X11 session versus Wayland if projection/window embedding remains odd.
+5. Test wireless Android Auto after a known-good USB Android Auto session.
+6. Add RoadRunner startup logic to prefer the USB Bluetooth adapter and avoid the internal Marvell Bluetooth path.
