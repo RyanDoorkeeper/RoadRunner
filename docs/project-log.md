@@ -261,3 +261,66 @@ The core Android Auto path now works when connected directly over USB. Remaining
 4. Test KDE X11 session versus Wayland if projection/window embedding remains odd.
 5. Test wireless Android Auto after a known-good USB Android Auto session.
 6. Add RoadRunner startup logic to prefer the USB Bluetooth adapter and avoid the internal Marvell Bluetooth path.
+
+## 2026-07-06: Telemetry sync architecture clarification
+
+### Key design clarification
+
+RoadRunner should not rely on Home Assistant or LubeLogger being reachable while driving.
+
+The vehicle tablet may have no Internet during a drive. Home Assistant and LubeLogger are on the home Docker/server environment and may only be reachable when the tablet returns to the garage Wi-Fi, uses USB tethering, uses a hotspot, or has separate LTE.
+
+### Updated telemetry model
+
+RoadRunner should use a store-and-forward telemetry model:
+
+```text
+OBD sample
+  ├── save immediately to local SQLite
+  ├── publish to MQTT if online
+  └── mark unsent if offline
+```
+
+When connectivity returns:
+
+```text
+queued samples / trip summaries
+  ├── replay to MQTT/Home Assistant if configured
+  ├── sync summaries or samples to a server analytics database
+  └── update LubeLogger odometer/fuel records through its API
+```
+
+### Home Assistant decision
+
+Home Assistant should receive pushed data from RoadRunner. It should not poll the sleeping tablet.
+
+If RoadRunner is online, it can publish live sensor values every 1-5 seconds, similar to the current Torque setup.
+
+If RoadRunner is offline, it should keep logging locally and optionally replay the missed telemetry after it reconnects.
+
+Replay behavior should be configurable:
+
+```text
+Replay mode
+
+( ) none
+( ) summaries only
+( ) full telemetry
+```
+
+### Analytics decision
+
+If detailed graphs and analytics are desired without remote-accessing a sleeping battery-powered tablet, RoadRunner should sync data to the Docker server when it gets connectivity.
+
+Recommended server-side options:
+
+- InfluxDB + Grafana for telemetry graphs.
+- PostgreSQL or SQLite for structured trip analytics.
+- LubeLogger for odometer, fuel, and maintenance history.
+- Home Assistant for current state, alerts, events, and automations.
+
+### Android Auto and Internet note
+
+Wireless Android Auto likely prevents assuming the tablet can simultaneously use the phone as a Wi-Fi hotspot. The phone's Wi-Fi radio is usually occupied by the Android Auto link.
+
+If live Home Assistant updates are important while driving, USB Android Auto plus USB tethering may be the most practical approach, because it can provide both Android Auto and Internet over the phone cable.
