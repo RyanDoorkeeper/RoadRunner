@@ -1,249 +1,142 @@
 # RoadRunner Development Roadmap
 
-This roadmap is focused on the current Surface Pro 4 development platform. The goal is to prove RoadRunner as a reliable vehicle appliance before adding optional features such as cameras, advanced dashboards, or server analytics.
+RoadRunner started on a Surface Pro 4, but the target platform is now the Dell Latitude 7210 Rugged Extreme. The Surface remains useful as a proof-of-concept and reference platform; new work should avoid deepening Surface-specific dependencies.
 
-## Current priority
+## Proven on the Surface prototype
 
-The current Surface setup is usable enough to stop chasing every Linux paper cut and start proving the RoadRunner concept.
-
-Already proven:
-
-- Debian Trixie + KDE Plasma boots on the Surface Pro 4.
-- linux-surface kernel is installed and running.
-- Touchscreen works after cold boot.
+- Debian Trixie and KDE Plasma boot and operate.
+- Touchscreen works with `linux-surface` and IPTSD.
 - HuDiY launches.
-- USB Android Auto works with direct cable connection.
-- Navigation, media, album art, and time sync work in Android Auto.
-- Baseus USB Bluetooth adapter works better than the internal Marvell Bluetooth controller.
+- Direct USB Android Auto works.
+- Navigation, media, album art, and time synchronization work.
+- A USB Bluetooth adapter is more reliable than the built-in Marvell controller.
+- Local-first telemetry and store-and-forward architecture have been defined.
 
-Main remaining platform concern:
+## Phase 0: Preserve and document the prototype
 
-- Touchscreen may stop responding after suspend/resume.
+- Keep Surface-specific setup and troubleshooting in the project log.
+- Record working HuDiY launch commands and direct-USB requirements.
+- Avoid spending substantial time polishing Surface-only suspend, Marvell, or IPTSD issues unless needed to continue software development.
 
-## Phase 0: Car appliance milestone
+## Phase 1: Latitude 7210 bring-up
 
-Before adding more integrations, make the tablet feel like it belongs in a car.
-
-Goal:
-
-```text
-Power on / wake
-  → auto login
-  → RoadRunner or HuDiY-ready launcher
-  → one tap to Android Auto
-  → no terminal or desktop interaction during normal use
-```
-
-Acceptance criteria:
-
-- Boots or wakes without manual Linux maintenance.
-- Screen stays on while driving.
-- HuDiY launches with one tap or automatically.
-- Android Auto starts reliably over direct USB.
-- No keyboard or terminal needed for a normal drive.
-- If something fails, there is a simple recovery action.
-
-## Phase 1: Surface reliability
-
-### 1. Characterize touchscreen after suspend
-
-This is the highest-priority Surface issue.
-
-Observed behavior:
-
-- Touch works after cold boot.
-- Android Auto worked during a drive.
-- After returning to the vehicle and waking the Surface, the touchscreen appeared unresponsive.
-
-Next tests:
-
-1. Reproduce the issue intentionally.
-2. When touch fails, try:
-
-```bash
-sudo systemctl restart iptsd
-```
-
-3. Check whether touch returns immediately.
-4. Test the same behavior under KDE X11 instead of Wayland.
-5. Record whether USB mouse/keyboard still works when touch fails.
-6. Record whether the issue happens after suspend only, or also after screen blanking.
-
-Possible workaround:
-
-- Add a resume hook that restarts `iptsd` after wake if needed.
-
-### 2. Repeated suspend/resume test
-
-Run several controlled suspend/resume cycles.
-
-Suggested test:
-
-```text
-Start HuDiY
-Connect Android Auto
-Suspend
-Wake
-Wait 2-5 minutes
-Repeat 10-20 times
-```
-
-Track failures:
-
-- Touchscreen
-- USB Android Auto
-- USB Bluetooth adapter
-- Wi-Fi
-- Audio
-- HuDiY projection
-- KDE/Wayland window behavior
-
-### 3. HuDiY startup polish
-
-Current Android Auto behavior is functional but still too manual.
-
-Desired behavior:
-
-```text
-Power on / wake
-  → RoadRunner launcher
-  → HuDiY ready
-  → phone plugged in
-  → Android Auto starts
-```
+Goal: establish the Latitude as the primary development and vehicle platform.
 
 Tasks:
 
-- Determine the reliable HuDiY launch command.
-- Determine whether HuDiY should autostart at login.
-- Test 1920x1440 or 1920x1080 at 100% scaling.
-- Test Wayland vs X11 if Android Auto projection/window embedding remains odd.
-- Confirm direct USB works with a known-good cable.
-- Confirm whether the USB hub is reliable or should be avoided.
+1. Verify exact CPU, RAM, storage, battery health, BIOS, and Computrace state.
+2. Select and install the initial OS.
+3. Validate touchscreen, audio, Wi-Fi, Bluetooth, battery reporting, and suspend/resume.
+4. Test every USB port alone and concurrently.
+5. Test HuDiY and direct USB Android Auto.
+6. Test USB Android Auto through the proposed dock or hub.
+7. Test USB tethering while Android Auto is active.
+8. Test analog AUX and USB audio paths.
+9. Document all Latitude-specific setup under `docs/`.
 
-## Phase 2: VehicleAgent proof of concept
+Acceptance criteria:
 
-Do not start with a full UI.
+- Normal use requires no terminal or keyboard.
+- Android Auto launches reliably.
+- Touch, audio, networking, and attached devices survive repeated sleep/wake cycles.
+- The tablet can charge while the required data peripherals are connected.
 
-The first real software milestone should be a minimal VehicleAgent that proves the OBD logging concept.
+## Phase 2: VehicleAgent minimum viable prototype
 
-Minimum viable test:
+Do not start with a full dashboard.
 
 ```text
 connect to OBD adapter
-  → read RPM
-  → write to SQLite
-  → print values to terminal
+  -> read RPM, speed, coolant temperature, and voltage
+  -> write timestamped samples to SQLite
+  -> expose current state locally
 ```
 
 Acceptance criteria:
 
-- Connects to the cheap ELM327 adapter or selected OBD adapter.
-- Reads at least RPM, speed, coolant temp, and voltage if available.
-- Stores timestamped samples in SQLite.
-- Survives disconnect/reconnect without corrupting the database.
+- Supports the generic ELM327 test adapter.
+- Reconnects after adapter loss.
+- Does not corrupt the database after interruption.
+- Includes a simulator for development outside the vehicle.
+- Keeps platform-specific device discovery outside the core logic.
 
-No MQTT, Home Assistant, LubeLogger, Grafana, or GUI should be required for this milestone.
+## Phase 3: Trip detection and local history
 
-## Phase 3: MQTT and Home Assistant
+- Add trip state machine.
+- Record trip start/end, duration, distance, and summary statistics.
+- Add GPS input after OBD logging is stable.
+- Store all data locally without requiring Internet access.
+- Add retention and database-maintenance policies.
 
-After SQLite logging works:
+## Phase 4: MQTT and Home Assistant
 
-- Publish live MQTT state when online.
+- Publish live state when online.
+- Add availability and last-seen status.
 - Use Home Assistant MQTT discovery where practical.
-- Add availability status.
-- Keep SQLite as the source of truth.
+- Publish trip-start and trip-end events.
+- Keep SQLite as the authoritative history.
 
-Initial topics:
+Initial topic namespace:
 
 ```text
-car/pathfinder/state
-car/pathfinder/availability
-car/pathfinder/trip/current
-car/pathfinder/trip/last
-car/pathfinder/odometer
+roadrunner/pathfinder/availability
+roadrunner/pathfinder/state
+roadrunner/pathfinder/trip/current
+roadrunner/pathfinder/trip/last
+roadrunner/pathfinder/events
 ```
 
-## Phase 4: Offline queue and replay
+## Phase 5: Offline queue and replay
 
-After live MQTT works:
+- Queue outbound records durably.
+- Retry with backoff after connectivity returns.
+- Support replay policies: none, summaries only, or full telemetry.
+- Prevent duplicate ingestion with stable message IDs.
+- Cap queue growth and report dropped data explicitly.
 
-- Mark samples as unsent when MQTT/server is offline.
-- Replay queued messages when the tablet reconnects.
-- Support configurable replay modes:
+## Phase 6: Server analytics and LubeLogger
 
-```text
-none
-summaries only
-full telemetry
-```
+- Sync detailed telemetry to InfluxDB, PostgreSQL, or a RoadRunner server endpoint.
+- Build Grafana dashboards without waking the tablet.
+- Update LubeLogger odometer and trip-related records when connected.
+- Keep Home Assistant focused on current state, alerts, and automations.
 
-This is what makes RoadRunner better than the current Torque setup.
+## Phase 7: Vehicle appliance shell
 
-## Phase 5: LubeLogger sync
+- Large touch controls and landscape layout.
+- Automatic startup and simple recovery.
+- Status page for OBD, GPS, MQTT, storage, and phone connection.
+- HuDiY launcher/manager.
+- Minimal interaction while moving.
 
-LubeLogger stays on the Docker server.
+## Phase 8: Automotive power and permanent installation
 
-RoadRunner should update it when connectivity exists.
+- Select an automotive-rated USB-C PD supply.
+- Add fused wiring and accessory-power awareness.
+- Define wake, suspend, grace-period, and shutdown behavior.
+- Validate battery drain, cranking behavior, cold weather, and summer heat.
+- Install a secure, airbag-safe mount and strain-relieved cabling.
 
-Minimum useful sync:
+## Later phases
 
-```text
-trip ended
-  → final odometer calculated/read
-  → tablet returns to network
-  → POST odometer entry to LubeLogger API
-```
+- Backup camera
+- Dashcam
+- Fuel-entry workflow
+- Maintenance reminders
+- Remote status through VPN or secure broker
+- Camping-van profile and multi-vehicle support
+- Voice controls only after the core system is reliable
 
-Fuel records can be added later.
-
-## Hardware decision point
-
-Do not buy replacement hardware yet unless a very good deal appears or the Surface proves unreliable.
-
-Reasons to continue with the Surface Pro 4 for now:
-
-- It is already available.
-- Debian, touch, audio, HuDiY, and Android Auto have been proven.
-- It is now a useful development platform.
-- Lessons learned will transfer to a Dell Latitude or other tablet later.
-
-Reasons to replace it later:
-
-- Touch after suspend cannot be fixed or worked around.
-- Marvell Wi-Fi/Bluetooth issues become too annoying.
-- A permanent vehicle install needs more reliable hardware.
-- A good Dell Latitude 7275/7320/7220 deal appears.
-
-Recommended eventual hardware direction:
-
-1. Dell Latitude 7275 or 7320 Detachable.
-2. Dell Latitude 7220 Rugged if weight/size are acceptable.
-3. ThinkPad X12 Detachable.
-4. Surface Pro 6/7 only if the price is right.
-
-Avoid buying another Surface Pro 4 specifically for this project.
-
-## Do not work on yet
-
-These are good ideas, but should wait until the core platform is stable:
-
-- Dashcam.
-- Backup camera.
-- GPS logging.
-- Fancy launcher UI.
-- Grafana/InfluxDB dashboards.
-- LubeLogger fuel entry UI.
-- Home Assistant automations.
-- BirdNET or other novelty integrations.
-
-The order should be:
+## Priority order
 
 ```text
-reliable car appliance
-  → OBD SQLite proof of concept
-  → MQTT/Home Assistant
-  → offline queue/replay
-  → LubeLogger sync
-  → extra features
+Latitude bring-up
+  -> OBD + SQLite
+  -> trip detection
+  -> MQTT/Home Assistant
+  -> offline sync
+  -> analytics/LubeLogger
+  -> polished shell
+  -> permanent power and mounting
+  -> cameras and extras
 ```
