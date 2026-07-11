@@ -79,11 +79,11 @@ Acceptance criteria:
 Initial topic namespace:
 
 ```text
-roadrunner/pathfinder/availability
-roadrunner/pathfinder/state
-roadrunner/pathfinder/trip/current
-roadrunner/pathfinder/trip/last
-roadrunner/pathfinder/events
+car/pathfinder/availability
+car/pathfinder/state
+car/pathfinder/trip/current
+car/pathfinder/trip/last
+car/pathfinder/events
 ```
 
 ## Phase 5: Offline queue and replay

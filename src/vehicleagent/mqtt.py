@@ -24,15 +24,19 @@ class MQTTPublisher:
 
     def __post_init__(self) -> None:
         self.client = mqtt.Client(mqtt.CallbackAPIVersion.VERSION2)
+        self._connected = False
         if self.username:
             self.client.username_pw_set(self.username, self.password)
 
     def connect(self) -> None:
+        if self._connected:
+            return
         _LOGGER.info("Connecting to MQTT broker %s:%s", self.host, self.port)
         self.client.will_set(f"{self.base_topic}/availability", "offline", retain=True)
         self.client.connect(self.host, self.port, keepalive=30)
         self.client.loop_start()
-        self.client.publish(f"{self.base_topic}/availability", "online", retain=True)
+        self._connected = True
+        self.publish_message(f"{self.base_topic}/availability", "online", retain=True)
         if self.publish_discovery:
             publish_sensor_configs(
                 self.client,
@@ -41,11 +45,27 @@ class MQTTPublisher:
             )
 
     def disconnect(self) -> None:
-        self.client.publish(f"{self.base_topic}/availability", "offline", retain=True)
-        self.client.loop_stop()
-        self.client.disconnect()
+        if not self._connected:
+            return
+        try:
+            self.publish_message(f"{self.base_topic}/availability", "offline", retain=True)
+        finally:
+            self.client.loop_stop()
+            self.client.disconnect()
+            self._connected = False
 
     def publish_state(self, state: VehicleState) -> None:
-        topic = f"{self.base_topic}/state"
         payload = json.dumps(state.to_dict(), separators=(",", ":"))
-        self.client.publish(topic, payload, retain=False)
+        self.publish_message(f"{self.base_topic}/state", payload)
+
+    def publish_message(self, topic: str, payload: str, *, retain: bool = False) -> None:
+        if not self._connected:
+            self.connect()
+        result = self.client.publish(topic, payload, retain=retain)
+        if result.rc != mqtt.MQTT_ERR_SUCCESS:
+            self._connected = False
+            raise RuntimeError(f"MQTT publish failed with result code {result.rc}")
+        result.wait_for_publish(timeout=5.0)
+        if not result.is_published():
+            self._connected = False
+            raise TimeoutError("Timed out waiting for MQTT state publish")

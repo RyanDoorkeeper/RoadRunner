@@ -30,8 +30,9 @@ class RoadRunnerConfig:
 
     @classmethod
     def load(cls, path: Path) -> "RoadRunnerConfig":
+        defaults = cls()
         if not path.exists():
-            return cls()
+            return defaults
 
         with path.open("r", encoding="utf-8") as handle:
             raw: dict[str, Any] = yaml.safe_load(handle) or {}
@@ -40,7 +41,7 @@ class RoadRunnerConfig:
         hudiy_raw = raw.get("hudiy", {}) or {}
 
         return cls(
-            vehicle_name=raw.get("vehicle_name", cls.vehicle_name),
+            vehicle_name=raw.get("vehicle_name", defaults.vehicle_name),
             mqtt=MQTTConfig(**mqtt_raw),
             hudiy=HuDiYConfig(**hudiy_raw),
         )

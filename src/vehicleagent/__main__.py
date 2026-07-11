@@ -4,6 +4,7 @@ import argparse
 import json
 import logging
 import time
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from .adapter import OBDAdapter
@@ -47,24 +48,15 @@ def main() -> int:
     mqtt = _build_mqtt(args)
     store = TelemetryStore(args.db)
 
-    adapter.connect()
     store.connect()
-    if mqtt is not None:
-        mqtt.connect()
+    _connect_adapter(adapter)
+    _connect_mqtt(mqtt)
 
     sample_count = 0
     try:
         while True:
-            state = adapter.read_state()
-            sent_mqtt = False
-            if mqtt is not None:
-                try:
-                    mqtt.publish_state(state)
-                    sent_mqtt = True
-                except Exception:  # noqa: BLE001 - keep local logging alive even if MQTT fails
-                    _LOGGER.exception("Failed to publish MQTT state; sample will remain unsent")
-            sample_id = store.insert_sample(state, sent_mqtt=sent_mqtt)
-            _log_sample(sample_id, state, args.print_json)
+            _read_store_and_queue(adapter, store, mqtt, print_json=args.print_json)
+            _publish_pending_mqtt(store, mqtt)
 
             sample_count += 1
             if args.once or (args.samples is not None and sample_count >= args.samples):
@@ -96,6 +88,87 @@ def _build_mqtt(args: argparse.Namespace) -> MQTTPublisher | None:
     if not args.mqtt_host:
         return None
     return MQTTPublisher(host=args.mqtt_host, port=args.mqtt_port, base_topic=args.base_topic)
+
+
+def _connect_adapter(adapter: OBDAdapter) -> None:
+    while True:
+        try:
+            adapter.connect()
+            return
+        except Exception:  # noqa: BLE001 - hardware adapters can fail in several ways
+            _LOGGER.exception("Failed to connect OBD adapter; retrying in 5 seconds")
+            time.sleep(5)
+
+
+def _connect_mqtt(mqtt: MQTTPublisher | None) -> None:
+    if mqtt is None:
+        return
+    try:
+        mqtt.connect()
+    except Exception:  # noqa: BLE001 - MQTT should not stop local logging
+        _LOGGER.exception("Failed to connect MQTT; samples will be queued locally")
+
+
+def _read_store_and_queue(
+    adapter: OBDAdapter,
+    store: TelemetryStore,
+    mqtt: MQTTPublisher | None,
+    *,
+    print_json: bool,
+) -> int:
+    state = _read_state_with_reconnect(adapter)
+    sample_id = store.insert_sample(state, sent_mqtt=False)
+    if mqtt is not None:
+        store.enqueue_mqtt_state(sample_id, state, topic=f"{mqtt.base_topic}/state")
+    _log_sample(sample_id, state, print_json)
+    return sample_id
+
+
+def _read_state_with_reconnect(adapter: OBDAdapter) -> VehicleState:
+    while True:
+        try:
+            return adapter.read_state()
+        except Exception:  # noqa: BLE001 - keep the service alive across adapter loss
+            _LOGGER.exception("Failed to read OBD state; reconnecting in 5 seconds")
+            try:
+                adapter.disconnect()
+            except Exception:  # noqa: BLE001 - best-effort cleanup before reconnect
+                _LOGGER.debug("Adapter disconnect after read failure also failed", exc_info=True)
+            time.sleep(5)
+            _connect_adapter(adapter)
+
+
+def _publish_pending_mqtt(
+    store: TelemetryStore,
+    mqtt: MQTTPublisher | None,
+    *,
+    limit: int = 10,
+) -> None:
+    if mqtt is None:
+        return
+
+    for message in store.pending_outbound_messages(target="mqtt", limit=limit):
+        try:
+            mqtt.publish_message(message.topic, message.payload_json)
+        except Exception as exc:  # noqa: BLE001 - retry later; never block local logging
+            delay = _retry_delay_seconds(message.attempt_count + 1)
+            next_attempt_at = datetime.now(UTC) + timedelta(seconds=delay)
+            store.mark_outbound_failed(
+                message.id,
+                error=str(exc),
+                next_attempt_at=next_attempt_at,
+            )
+            _LOGGER.warning(
+                "Failed to publish queued MQTT message %s; retrying in %s seconds",
+                message.id,
+                delay,
+            )
+            return
+        store.mark_outbound_sent(message.id)
+
+
+def _retry_delay_seconds(attempt_count: int) -> int:
+    return min(300, 2 ** min(attempt_count, 8))
 
 
 def _log_sample(sample_id: int, state: VehicleState, print_json: bool) -> None:

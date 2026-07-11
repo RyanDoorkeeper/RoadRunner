@@ -36,3 +36,29 @@ def test_store_tracks_unsent_mqtt_count(tmp_path: Path) -> None:
     assert store.unsent_mqtt_count() == 0
 
     store.close()
+
+
+def test_store_tracks_pending_outbound_messages(tmp_path: Path) -> None:
+    db_path = tmp_path / "telemetry.sqlite3"
+    store = TelemetryStore(db_path)
+    store.connect()
+
+    sample_id = store.insert_sample(VehicleState.now(rpm=1000), sent_mqtt=False)
+    message_id = store.enqueue_mqtt_state(
+        sample_id,
+        VehicleState.now(rpm=1000),
+        topic="car/pathfinder/state",
+    )
+    pending = store.pending_outbound_messages(target="mqtt")
+
+    assert len(pending) == 1
+    assert pending[0].id == message_id
+    assert pending[0].topic == "car/pathfinder/state"
+    assert store.pending_outbound_count(target="mqtt") == 1
+
+    store.mark_outbound_sent(message_id)
+
+    assert store.pending_outbound_count(target="mqtt") == 0
+    assert store.unsent_mqtt_count() == 0
+
+    store.close()
