@@ -3,89 +3,112 @@
 ## Vehicle
 
 - 2007 Nissan Pathfinder
-- Factory Bose audio system
-- Plan is not to replace the factory radio initially
-- Audio quality target: good enough; current baseline is Bluetooth-to-AUX through a Roav adapter
+- Factory Bose audio system retained initially
+- Audio target: reliable AUX or USB-audio feed without replacing the radio
 
-## Tablet
+## Platform direction
 
-Prototype tablet:
+RoadRunner began on a Microsoft Surface Pro 4 as a proof of concept. The intended long-term platform is the Dell Latitude 7210 Rugged Extreme. Surface-specific work should be preserved as prototype history, while new code and deployment decisions should favor portability to the Latitude.
 
-- Microsoft Surface Pro 4
-- Debian Trixie
-- KDE Plasma
-- linux-surface kernel
+### Surface Pro 4 prototype
 
-### Surface hardware status
+- Debian Trixie with KDE Plasma
+- linux-surface kernel and IPTSD touchscreen support
+- USB Android Auto through HuDiY validated with a direct cable
+- Built-in Marvell Bluetooth is unreliable, especially after suspend/resume
+- Baseus USB Bluetooth adapter works more reliably
+- High-DPI 3:2 display and fractional scaling require UI testing
 
-| Component | Status | Notes |
-|---|---|---|
-| Touchscreen | Working | Works after linux-surface kernel + iptsd |
-| Wi-Fi | Working | Built-in Marvell chipset |
-| Bluetooth | Partially working | Adapter visible and scans BLE advertisements, but pairing unreliable |
-| Audio | Working | Needs later AUX/pathfinder audio test |
-| Battery percentage | Working | Charging state may be inaccurate |
-| Suspend/resume | Working | Marvell firmware may enter bad state after suspend |
-| Auto-rotation | Not working | Not important for fixed landscape mount |
-| Cameras | Not tested | Not critical yet |
+### Dell Latitude 7210 Rugged Extreme target
 
-## Bluetooth / Wi-Fi chipset
+Known or seller-reported details from the unit under consideration:
 
-The Surface Pro 4 uses Marvell wireless hardware:
+- Two USB-C ports
+- One USB-A port
+- Keyboard included
+- No power cable included
+- Seller-reported battery health near 95%; verify on receipt
+- Seller listed 256 GB storage; verify actual drive and health
+- Dell configuration information showed Computrace disabled
 
-```text
-1286:204C Marvell Semiconductor, Inc. Bluetooth and Wireless LAN Composite
-```
+Reasons for migration:
 
-The relevant Linux driver is `mwifiex` / `mwifiex_pcie`.
+- Rugged enclosure better suited to vehicle use
+- More practical I/O for charging, phone, OBD, GPS, audio, and cameras
+- Better mounting and serviceability potential
+- Less dependence on Surface-specific kernel components
+- Better foundation for a later installation in the camping van
 
-Observed behavior:
+The final operating system remains a deployment decision. Keep the core service portable enough for Linux first, while avoiding unnecessary assumptions that would prevent a Windows build if hardware testing makes it preferable.
 
-- Wi-Fi works.
-- Bluetooth service runs.
-- Bluetooth controller appears in `bluetoothctl`.
-- BLE advertisements can be seen.
-- Pairing/discovery is unreliable.
-- After suspend/resume, `mwifiex` may report firmware bad-state errors.
+## Proposed peripheral layout
 
-Potential mitigation:
+A likely arrangement is:
 
-- Use the built-in Marvell adapter for Wi-Fi.
-- Use a USB Bluetooth adapter for reliable Android Auto / HuDiY pairing.
+- USB-C 1: automotive USB-C PD power or dock power input
+- USB-C 2: phone data, dock, or expansion
+- USB-A: OBD-II, GPS, Bluetooth, or a tested hub
+- 3.5 mm output or USB audio: factory-radio AUX input
+
+Do not finalize the topology until simultaneous charging, Android Auto, USB tethering, and peripheral behavior are tested on the Latitude.
 
 ## OBD-II
 
-Initial test adapter:
+Initial development uses a generic ELM327-class adapter. It is suitable for proving the data path but clone quality and protocol behavior vary.
 
-- Cheap ELM327 adapter
-
-Expected initial PIDs:
+Initial PIDs:
 
 - RPM
 - Vehicle speed
 - Coolant temperature
-- Intake air temperature
+- Intake-air temperature
 - Throttle position
 - Engine load
 - Fuel trims
-- Battery/charging voltage if supported
+- Control-module voltage when supported
 - Diagnostic trouble codes
 
-Future possible upgrade:
+The software must abstract the adapter and support reconnects, timeouts, malformed responses, configurable endpoints, adapter identity logging, and a simulator. Possible upgrades include OBDLink CX or OBDLink EX.
 
-- OBDLink CX for Bluetooth
-- OBDLink EX for wired USB
+## GPS
 
-Design note:
+Use a USB GNSS receiver if built-in location hardware is absent or unreliable. On Linux, prefer hardware supported by `gpsd`. Record time, position, speed, heading, altitude, fix type, satellite count, and accuracy when available.
 
-RoadRunner should abstract the OBD adapter so the rest of the software does not care whether the source is ELM327, OBDLink, or a simulator.
+## Audio
 
-## Possible future hardware
+Retain the factory Bose radio. Test analog AUX and USB audio for:
 
-- Automotive power supply / USB-C PD charger
-- Solid tablet mount, likely RAM Mount or ProClip-style
-- USB hub
-- USB Bluetooth adapter
-- USB GPS receiver if needed
-- USB camera or capture device for dashcam
-- Backup camera input/capture device
+- Ground-loop noise
+- Volume consistency
+- Resume behavior
+- Android Auto routing
+- Microphone behavior if voice commands are used
+
+## Power
+
+The permanent installation needs an automotive-rated power design:
+
+- Correct USB-C PD profile and adequate wattage for the Latitude
+- Input protection for automotive transients
+- Stable behavior during engine cranking
+- Fusing near the source
+- No unacceptable parked battery drain
+- Graceful suspend or shutdown after accessory power is removed
+
+## Mounting and thermal requirements
+
+- Do not obstruct airbags, gauges, controls, or sight lines.
+- Secure the tablet and cables for hard braking and rough roads.
+- Provide airflow and reduce direct-sun heating where practical.
+- Add strain relief and keep the tablet removable for maintenance.
+
+## Validation checklist
+
+1. Confirm the Latitude's exact CPU, RAM, storage, BIOS, battery, and Computrace state.
+2. Confirm charging wattage and load behavior.
+3. Test all USB ports independently and concurrently.
+4. Test suspend/resume with OBD, GPS, phone, Bluetooth, and audio attached.
+5. Test direct and docked USB Android Auto.
+6. Test USB tethering while Android Auto is active.
+7. Measure idle, active, suspend, and shutdown power draw.
+8. Validate cold-weather startup and battery behavior before permanent installation.
